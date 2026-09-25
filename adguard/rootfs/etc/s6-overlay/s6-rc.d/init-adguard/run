@@ -105,6 +105,20 @@ else
     yq --inplace e '.dns.bind_host = "127.0.0.1"' "${CONFIG}"
 fi
 
+# The Supervisor's network API only reports ethernet, wireless and VLAN
+# interfaces. On Supervised installs the LAN address often lives on a bridge
+# (e.g. br0 with the NIC enslaved to it), which the Supervisor never reports,
+# leaving AdGuard Home bound to localhost only. As this app runs on the host
+# network, read those addresses straight from the kernel as a fallback,
+# skipping container, VPN and other virtual interfaces.
+function host_fallback_addresses() {
+    ip -o -4 addr show scope global 2>/dev/null \
+        | awk '$2 !~ /^(docker[0-9]*|hassio|veth.*|br-[0-9a-f]+|tailscale[0-9]*|wg[0-9]*|zt.*|tun[0-9]*|tap[0-9]*)$/ {
+            split($4, address, "/")
+            print address[1]
+        }'
+}
+
 # Returns successfully as soon as any interface reports a usable IPv4 address.
 function has_usable_address() {
     local interface
@@ -119,6 +133,10 @@ function has_usable_address() {
             return "${__BASHIO_EXIT_OK}"
         done
     done
+
+    if [[ -n "$(host_fallback_addresses)" ]]; then
+        return "${__BASHIO_EXIT_OK}"
+    fi
 
     return "${__BASHIO_EXIT_NOK}"
 }
@@ -183,6 +201,14 @@ for interface in "${interfaces[@]}"; do
     done
 
 done
+# Nothing usable from the Supervisor? Fall back to what the host itself reports.
+if ! printf '%s\n' "${hosts[@]}" | grep -q -E '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$'; then
+    for host in $(host_fallback_addresses); do
+        bashio::log.info "Supervisor reported no IPv4 address, binding to ${host} found on the host"
+        hosts+=("${host}")
+    done
+fi
+
 # Bind to app IP address
 hosts+=($(bashio::app.ip_address))
 # Bind to localhost ip addresses as well.
