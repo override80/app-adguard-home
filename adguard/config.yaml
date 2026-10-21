@@ -1,6 +1,6 @@
 ---
 name: AdGuard Home (Supervised bridge fix)
-version: 6.3.0-bridgefix.1
+version: 6.3.0-bridgefix.2
 slug: adguard
 description: Network-wide ads & trackers blocking DNS server
 url: https://github.com/override80/app-adguard-home/tree/supervised-bridge-fix
